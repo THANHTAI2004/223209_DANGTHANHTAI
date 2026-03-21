@@ -1,584 +1,1001 @@
-Bộ sơ đồ Use Case chi tiết
-Ghi chú ánh xạ actor theo source hiện tại
-Hệ thống hiện tại đi theo mô hình device-centric.
-Quyền truy cập dữ liệu hằng ngày chủ yếu là `owner` và `viewer`.
-Trong bộ sơ đồ này:
-`Người dùng cuối` ~= người dùng sở hữu thiết bị (`owner`).
-`Người theo dõi/caregiver` ~= người được chia sẻ quyền xem (`viewer`).
-`Admin` là quyền hệ thống và bootstrap.
+Bộ sơ đồ phân tích & thiết kế hệ thống Eldercare (bám sát app + server)
+1) Nguyên tắc bám sát hệ thống hiện tại
+Bộ sơ đồ này được thiết kế theo đúng cấu trúc hệ thống trong hai repository:
+`eldercare\_app`: Flutter app, điều hướng chính qua các màn hình `/devices`, `/register`, `/history`, `/alerts`, `/account`, `/admin/devices/register`.
+`docker-environment`: FastAPI backend theo mô hình device-centric, phân quyền theo liên kết thiết bị `owner` / `viewer`, có nhóm API `auth`, `users`, `devices`, `alerts`, `esp`, chạy cùng `MongoDB`, `Redis`, `cloudflared`, `Node-RED` trong Docker Compose.
+Diễn giải actor để dùng trong báo cáo
+Để UML sát nghiệp vụ và vẫn dễ hiểu khi viết báo cáo, nên dùng các actor sau:
+Khách / Người dùng chưa đăng nhập: chỉ có đăng ký, đăng nhập.
+Người dùng đã xác thực: tài khoản đã có phiên đăng nhập.
+Chủ thiết bị (Owner): người sở hữu quyền quản trị một thiết bị.
+Người xem (Viewer): người được chia sẻ quyền xem dữ liệu thiết bị.
+Quản trị viên (Admin): quản trị hệ thống, đăng ký/cấp mã ghép nối thiết bị.
+Thiết bị ESP32/Wearable: actor ngoài hệ thống, gửi dữ liệu và nhận lệnh ECG.
+> Lưu ý: nếu muốn viết theo ngôn ngữ đề tài, có thể đổi tên:
+> - “Chủ thiết bị” → “Người thân/chăm sóc chính”
+> - “Người xem” → “Người thân phụ / bác sĩ / điều dưỡng được chia sẻ quyền xem”
+> Nhưng trong UML vẫn nên giữ logic quyền `owner/viewer` để sát code.
 ---
-1) Sơ đồ Use Case tổng quan hệ thống
+2) Danh sách sơ đồ nên đưa vào báo cáo
+Nhóm Use Case
+Sơ đồ Use Case tổng quan toàn hệ thống
+Sơ đồ Use Case chi tiết phân hệ Tài khoản & Xác thực
+Sơ đồ Use Case chi tiết phân hệ Chủ thiết bị
+Sơ đồ Use Case chi tiết phân hệ Người xem
+Sơ đồ Use Case chi tiết phân hệ Quản trị viên
+Sơ đồ Use Case chi tiết phân hệ Thiết bị ESP32
+Nhóm Sequence
+Sơ đồ Sequence tổng quan luồng App ↔ API ↔ DB
+Sơ đồ Sequence đăng ký / đăng nhập / khôi phục phiên
+Sơ đồ Sequence liên kết thiết bị bằng mã ghép nối
+Sơ đồ Sequence tải dashboard thiết bị (latest/history/alerts)
+Sơ đồ Sequence quản lý người xem
+Sơ đồ Sequence yêu cầu ECG theo lệnh từ app
+Sơ đồ Sequence xác nhận xử lý cảnh báo
+Sơ đồ Sequence admin đăng ký thiết bị / cấp lại pairing code
+Sơ đồ Sequence ESP gửi dữ liệu sức khỏe và backend sinh cảnh báo
+Nhóm Activity
+Sơ đồ Activity tổng quan nghiệp vụ
+Sơ đồ Activity đăng ký / đăng nhập
+Sơ đồ Activity liên kết thiết bị
+Sơ đồ Activity quản lý người xem
+Sơ đồ Activity yêu cầu ECG
+Sơ đồ Activity xử lý cảnh báo
+Nhóm kiến trúc hệ thống
+Sơ đồ Component tổng quan app-server
+Sơ đồ Deployment tổng quan Docker/Production
+---
+3) Các sơ đồ PlantUML
+---
+Hình UC-01. Use Case tổng quan toàn hệ thống
 ```plantuml
 @startuml
 left to right direction
-skinparam shadowing false
 skinparam packageStyle rectangle
-skinparam actorStyle awesome
 
-actor "Người dùng cuối\n(Owner/Patient)" as EndUser
-actor "Người theo dõi\n(Viewer/Caregiver)" as Viewer
-actor "Admin" as Admin
+actor "Khách" as Guest
+actor "Người dùng\\nđã xác thực" as User
+actor "Chủ thiết bị\\n(Owner)" as Owner
+actor "Người xem\\n(Viewer)" as Viewer
+actor "Quản trị viên\\n(Admin)" as Admin
 actor "Thiết bị ESP32" as ESP
 
-rectangle "Hệ thống theo dõi sức khỏe từ xa" {
+rectangle "Hệ thống Eldercare" {
+  usecase "Đăng ký tài khoản" as UC\_Register
+  usecase "Đăng nhập" as UC\_Login
+  usecase "Khôi phục phiên" as UC\_Restore
+  usecase "Đăng xuất" as UC\_Logout
+  usecase "Xem / cập nhật hồ sơ cá nhân" as UC\_Profile
+  usecase "Đổi mật khẩu" as UC\_ChangePassword
 
-  package "Khối người dùng" {
-    usecase "Đăng ký tài khoản" as UC_Register
-    usecase "Đăng nhập" as UC_Login
-    usecase "Khôi phục phiên" as UC_Restore
-    usecase "Đăng xuất" as UC_Logout
-    usecase "Xem danh sách\nthiết bị liên kết" as UC_MyDevices
-    usecase "Liên kết thiết bị\n(pairing code)" as UC_Claim
-    usecase "Chọn thiết bị\nđang theo dõi" as UC_SelectDevice
-    usecase "Xem dữ liệu realtime" as UC_Latest
-    usecase "Xem lịch sử" as UC_History
-    usecase "Xem ECG" as UC_ECG
-    usecase "Xem cảnh báo" as UC_Alerts
-    usecase "Gửi yêu cầu ECG" as UC_RequestECG
-    usecase "Quản lý người xem" as UC_Viewers
-    usecase "Xác nhận cảnh báo" as UC_AckAlert
-  }
+  usecase "Xem danh sách thiết bị\\nđã liên kết" as UC\_ListDevices
+  usecase "Chọn thiết bị hiện tại" as UC\_SelectDevice
+  usecase "Liên kết thiết bị bằng\\nmã ghép nối" as UC\_ClaimDevice
 
-  package "Khối quản trị" {
-    usecase "Tạo user bootstrap" as UC_CreateUser
-    usecase "Đăng ký thiết bị" as UC_RegisterDevice
-    usecase "Cấp/rotate ESP token" as UC_RotateToken
-    usecase "Cấu hình ngưỡng cảnh báo" as UC_Thresholds
-    usecase "Theo dõi health/\nmetrics/logs" as UC_Operations
-  }
+  usecase "Xem dữ liệu realtime" as UC\_Realtime
+  usecase "Xem lịch sử chỉ số" as UC\_History
+  usecase "Xem cảnh báo" as UC\_Alerts
+  usecase "Xác nhận đã xử lý\\ncảnh báo" as UC\_AckAlert
 
-  package "Khối thiết bị IoT" {
-    usecase "Gửi readings sức khỏe" as UC_SendReadings
-    usecase "Poll command kế tiếp" as UC_PollCommand
-    usecase "Gửi ACK command" as UC_AckCommand
-  }
+  usecase "Quản lý người xem" as UC\_ManageViewers
+  usecase "Yêu cầu đo ECG" as UC\_RequestECG
+  usecase "Xem thông tin thiết bị" as UC\_DeviceInfo
 
-  package "Nghiệp vụ lõi" {
-    usecase "Xác thực người dùng" as UC_UserAuth
-    usecase "Xác thực thiết bị" as UC_DeviceAuth
-    usecase "Kiểm tra quyền theo thiết bị" as UC_Access
-    usecase "Lưu dữ liệu sức khỏe" as UC_Store
-    usecase "Tạo cảnh báo tự động" as UC_AutoAlert
-    usecase "Điều phối ECG on-demand" as UC_OrchECG
-  }
+  usecase "Đăng ký thiết bị mới /\\nCấp lại pairing code" as UC\_RegisterDevice
+  usecase "Quản trị bootstrap người dùng" as UC\_BootstrapUser
+
+  usecase "Gửi readings sức khỏe" as UC\_SendReadings
+  usecase "Nhận lệnh tiếp theo" as UC\_GetNextCommand
+  usecase "ACK lệnh ECG" as UC\_AckCommand
 }
 
-EndUser --> UC_Register
-EndUser --> UC_Login
-EndUser --> UC_Restore
-EndUser --> UC_Logout
-EndUser --> UC_MyDevices
-EndUser --> UC_Claim
-EndUser --> UC_SelectDevice
-EndUser --> UC_Latest
-EndUser --> UC_History
-EndUser --> UC_ECG
-EndUser --> UC_Alerts
-EndUser --> UC_RequestECG
-EndUser --> UC_Viewers
-EndUser --> UC_AckAlert
+Guest --> UC\_Register
+Guest --> UC\_Login
 
-Viewer --> UC_Login
-Viewer --> UC_Restore
-Viewer --> UC_Logout
-Viewer --> UC_MyDevices
-Viewer --> UC_SelectDevice
-Viewer --> UC_Latest
-Viewer --> UC_History
-Viewer --> UC_ECG
-Viewer --> UC_Alerts
+User --> UC\_Restore
+User --> UC\_Logout
+User --> UC\_Profile
+User --> UC\_ChangePassword
+User --> UC\_ListDevices
+User --> UC\_SelectDevice
+User --> UC\_ClaimDevice
+User --> UC\_Realtime
+User --> UC\_History
+User --> UC\_Alerts
+User --> UC\_DeviceInfo
 
-Admin --> UC_Login
-Admin --> UC_CreateUser
-Admin --> UC_RegisterDevice
-Admin --> UC_RotateToken
-Admin --> UC_Thresholds
-Admin --> UC_Operations
+Owner --> UC\_AckAlert
+Owner --> UC\_ManageViewers
+Owner --> UC\_RequestECG
 
-ESP --> UC_SendReadings
-ESP --> UC_PollCommand
-ESP --> UC_AckCommand
+Viewer --> UC\_Realtime
+Viewer --> UC\_History
+Viewer --> UC\_Alerts
+Viewer --> UC\_DeviceInfo
 
-UC_Login .> UC_UserAuth : <<include>>
-UC_Restore .> UC_UserAuth : <<include>>
-UC_Latest .> UC_Access : <<include>>
-UC_History .> UC_Access : <<include>>
-UC_ECG .> UC_Access : <<include>>
-UC_Alerts .> UC_Access : <<include>>
-UC_RequestECG .> UC_Access : <<include>>
-UC_Viewers .> UC_Access : <<include>>
-UC_AckAlert .> UC_Access : <<include>>
-UC_Thresholds .> UC_Access : <<include>>
+Admin --> UC\_RegisterDevice
+Admin --> UC\_BootstrapUser
+Admin --> UC\_ListDevices
 
-UC_SendReadings .> UC_DeviceAuth : <<include>>
-UC_SendReadings .> UC_Store : <<include>>
-UC_SendReadings .> UC_AutoAlert : <<include>>
-UC_PollCommand .> UC_DeviceAuth : <<include>>
-UC_PollCommand .> UC_OrchECG : <<include>>
-UC_AckCommand .> UC_DeviceAuth : <<include>>
-UC_AckCommand .> UC_OrchECG : <<include>>
-UC_RequestECG .> UC_OrchECG : <<include>>
+ESP --> UC\_SendReadings
+ESP --> UC\_GetNextCommand
+ESP --> UC\_AckCommand
 
+UC\_SelectDevice .> UC\_Realtime : <<include>>
+UC\_SelectDevice .> UC\_History : <<include>>
+UC\_SelectDevice .> UC\_Alerts : <<include>>
+UC\_RequestECG .> UC\_GetNextCommand : <<indirect>>
+UC\_SendReadings .> UC\_Alerts : <<extend>>
 @enduml
 ```
-Đặc tả sơ đồ
-Mục tiêu: mô tả toàn bộ phạm vi hệ thống theo 4 actor chính: người dùng cuối, người theo dõi, admin và thiết bị ESP32.
-Phạm vi: bao trùm nhóm use case người dùng, nhóm quản trị, nhóm thiết bị IoT và các use case nghiệp vụ lõi mà các luồng khác phụ thuộc.
-Điểm nhấn: sơ đồ thể hiện hệ thống không chỉ có chiều “đọc dữ liệu”, mà còn có chiều “điều phối tác vụ” thông qua ECG on-demand.
-Quan hệ include chính:
-mọi luồng đọc dữ liệu đều đi qua `Kiểm tra quyền theo thiết bị`;
-luồng thiết bị đều đi qua `Xác thực thiết bị`;
-luồng `Gửi readings` luôn kéo theo `Lưu dữ liệu sức khỏe` và `Tạo cảnh báo tự động`.
-Tiền điều kiện tổng quát: hệ thống backend hoạt động, MongoDB/Redis sẵn sàng, app và ESP32 truy cập được API.
-Hậu điều kiện tổng quát: người dùng truy cập được dữ liệu theo đúng quyền; thiết bị gửi dữ liệu và nhận lệnh; admin quản trị được user/device/token; hệ thống lưu trữ và sinh cảnh báo đúng luồng.
 ---
-2) Sơ đồ Use Case cho người dùng cuối
+Hình UC-02. Use Case chi tiết phân hệ Tài khoản & Xác thực
 ```plantuml
 @startuml
 left to right direction
-skinparam shadowing false
 skinparam packageStyle rectangle
-skinparam actorStyle awesome
 
-actor "Người dùng cuối\n(Owner)" as Owner
+actor "Khách" as Guest
+actor "Người dùng" as User
 
-rectangle "Use Case - Người dùng cuối" {
-
-  package "Tài khoản" {
-    usecase "Đăng ký tài khoản" as U1_Register
-    usecase "Đăng nhập" as U1_Login
-    usecase "Khôi phục phiên" as U1_Restore
-    usecase "Đăng xuất" as U1_Logout
-    usecase "Làm mới access token" as U1_Refresh
-    usecase "Đồng bộ hồ sơ hiện tại" as U1_Me
-  }
-
-  package "Thiết bị" {
-    usecase "Tải danh sách\nthiết bị liên kết" as U1_MyDevices
-    usecase "Liên kết thiết bị\n(device_id + pairing_code)" as U1_Claim
-    usecase "Chọn thiết bị hiện tại" as U1_SelectDevice
-    usecase "Đồng bộ scope dữ liệu\ntheo device" as U1_BindScope
-    usecase "Xem linked users" as U1_LinkedUsers
-    usecase "Quản lý người xem" as U1_ManageViewers
-    usecase "Thêm viewer" as U1_AddViewer
-    usecase "Xóa viewer" as U1_RemoveViewer
-  }
-
-  package "Theo dõi sức khỏe" {
-    usecase "Xem dữ liệu realtime" as U1_Latest
-    usecase "Làm mới dữ liệu realtime" as U1_RefreshLatest
-    usecase "Xem lịch sử" as U1_History
-    usecase "Xem ECG" as U1_ECG
-    usecase "Xem cảnh báo" as U1_Alerts
-    usecase "Xác nhận cảnh báo" as U1_AckAlert
-    usecase "Gửi yêu cầu ECG" as U1_RequestECG
-  }
-
-  package "Ràng buộc nghiệp vụ" {
-    usecase "Kiểm tra quyền truy cập\ntheo device" as U1_Access
-    usecase "Kiểm tra quyền owner" as U1_OwnerAccess
-    usecase "Điều phối ECG on-demand" as U1_OrchECG
-  }
+rectangle "Phân hệ Tài khoản \& Xác thực" {
+  usecase "Đăng ký tài khoản\\n(name, phone, dob, password)" as UC\_Register
+  usecase "Đăng nhập bằng\\nsố điện thoại + mật khẩu" as UC\_Login
+  usecase "Khôi phục phiên bằng\\nrefresh/access token" as UC\_Restore
+  usecase "Đăng xuất phiên hiện tại" as UC\_Logout
+  usecase "Lấy hồ sơ hiện tại\\n(GET /auth/me)" as UC\_GetMe
+  usecase "Cập nhật hồ sơ\\n(PATCH /auth/me)" as UC\_UpdateMe
+  usecase "Đổi mật khẩu\\n(POST /auth/change-password)" as UC\_ChangePassword
 }
 
-Owner --> U1_Register
-Owner --> U1_Login
-Owner --> U1_Restore
-Owner --> U1_Logout
-Owner --> U1_MyDevices
-Owner --> U1_Claim
-Owner --> U1_SelectDevice
-Owner --> U1_LinkedUsers
-Owner --> U1_ManageViewers
-Owner --> U1_Latest
-Owner --> U1_History
-Owner --> U1_ECG
-Owner --> U1_Alerts
-Owner --> U1_AckAlert
-Owner --> U1_RequestECG
+Guest --> UC\_Register
+Guest --> UC\_Login
 
-U1_Login .> U1_Me : <<include>>
-U1_Login .> U1_MyDevices : <<include>>
-U1_Restore .> U1_Refresh : <<include>>
-U1_Restore .> U1_Me : <<include>>
-U1_Restore .> U1_MyDevices : <<include>>
+User --> UC\_Restore
+User --> UC\_Logout
+User --> UC\_GetMe
+User --> UC\_UpdateMe
+User --> UC\_ChangePassword
 
-U1_SelectDevice .> U1_BindScope : <<include>>
-
-U1_Latest .> U1_Access : <<include>>
-U1_History .> U1_Access : <<include>>
-U1_ECG .> U1_Access : <<include>>
-U1_Alerts .> U1_Access : <<include>>
-U1_LinkedUsers .> U1_Access : <<include>>
-
-U1_RefreshLatest ..> U1_Latest : <<extend>>
-
-U1_ManageViewers .> U1_OwnerAccess : <<include>>
-U1_ManageViewers .> U1_LinkedUsers : <<include>>
-U1_ManageViewers .> U1_AddViewer : <<include>>
-U1_ManageViewers .> U1_RemoveViewer : <<include>>
-U1_AckAlert .> U1_OwnerAccess : <<include>>
-U1_RequestECG .> U1_OwnerAccess : <<include>>
-U1_RequestECG .> U1_OrchECG : <<include>>
-
+UC\_Login .> UC\_GetMe : <<include>>
+UC\_Restore .> UC\_GetMe : <<include>>
+UC\_UpdateMe .> UC\_GetMe : <<include>>
+UC\_ChangePassword .> UC\_GetMe : <<include>>
 @enduml
 ```
-Đặc tả sơ đồ
-Mục tiêu: mô tả đầy đủ các thao tác của người dùng cuối khi người đó là chủ thiết bị (`owner`).
-Tác nhân: người dùng ứng dụng Flutter đã đăng ký tài khoản và có ít nhất một thiết bị được liên kết hoặc có thể claim thiết bị mới.
-Các nhóm chức năng chính:
-tài khoản và phiên: đăng ký, đăng nhập, khôi phục phiên, làm mới token, đăng xuất;
-thiết bị: xem danh sách thiết bị, claim thiết bị, chọn thiết bị hiện tại, quản lý viewer;
-dữ liệu sức khỏe: xem realtime, history, ECG, alerts và gửi yêu cầu ECG.
-Quan hệ include/extend quan trọng:
-`Đăng nhập` và `Khôi phục phiên` đều kéo theo `Đồng bộ hồ sơ hiện tại` và `Tải danh sách thiết bị liên kết`;
-`Chọn thiết bị hiện tại` kéo theo `Đồng bộ scope dữ liệu theo device`;
-`Làm mới dữ liệu realtime` là hành vi mở rộng từ `Xem dữ liệu realtime`;
-các tác vụ owner-only như quản lý viewer, xác nhận cảnh báo, gửi yêu cầu ECG đều phải qua `Kiểm tra quyền owner`.
-Tiền điều kiện: backend khả dụng; người dùng có tài khoản hợp lệ hoặc có thể tự đăng ký; có thể tồn tại thiết bị chưa claim hoặc đã claim.
-Hậu điều kiện: session được thiết lập/khôi phục; device hiện tại được chọn; dữ liệu được tải đúng theo device; viewer/cảnh báo/ECG được thao tác đúng quyền owner.
 ---
-3) Sơ đồ Use Case cho người theo dõi / caregiver
+Hình UC-03. Use Case chi tiết phân hệ Chủ thiết bị
 ```plantuml
 @startuml
 left to right direction
-skinparam shadowing false
 skinparam packageStyle rectangle
-skinparam actorStyle awesome
 
-actor "Người theo dõi\n(Viewer/Caregiver)" as Viewer
+actor "Chủ thiết bị\\n(Owner)" as Owner
 
-rectangle "Use Case - Người theo dõi / caregiver" {
-
-  package "Tài khoản" {
-    usecase "Đăng nhập" as V_Login
-    usecase "Khôi phục phiên" as V_Restore
-    usecase "Đăng xuất" as V_Logout
-    usecase "Làm mới access token" as V_Refresh
-    usecase "Đồng bộ hồ sơ hiện tại" as V_Me
-  }
-
-  package "Thiết bị được chia sẻ" {
-    usecase "Tải danh sách\nthiết bị được chia sẻ" as V_MyDevices
-    usecase "Chọn thiết bị hiện tại" as V_SelectDevice
-    usecase "Đồng bộ scope dữ liệu\ntheo device" as V_BindScope
-    usecase "Xem linked users" as V_LinkedUsers
-  }
-
-  package "Theo dõi sức khỏe" {
-    usecase "Xem dữ liệu realtime" as V_Latest
-    usecase "Xem lịch sử" as V_History
-    usecase "Xem ECG" as V_ECG
-    usecase "Xem cảnh báo" as V_Alerts
-  }
-
-  package "Ràng buộc nghiệp vụ" {
-    usecase "Kiểm tra quyền viewer\ntheo device" as V_Access
-  }
+rectangle "Phân hệ Chủ thiết bị" {
+  usecase "Xem danh sách thiết bị\\nđã liên kết" as UC\_List
+  usecase "Liên kết thiết bị bằng\\ndevice\_id + pairing\_code" as UC\_Claim
+  usecase "Chọn thiết bị hiện tại" as UC\_Select
+  usecase "Xem realtime" as UC\_Realtime
+  usecase "Xem lịch sử" as UC\_History
+  usecase "Xem cảnh báo" as UC\_Alerts
+  usecase "Xác nhận cảnh báo\\nđã xử lý" as UC\_Ack
+  usecase "Xem linked users /\\nviewers" as UC\_ViewLinked
+  usecase "Thêm viewer theo\\naccount code" as UC\_AddViewer
+  usecase "Xóa viewer" as UC\_RemoveViewer
+  usecase "Yêu cầu đo ECG" as UC\_ECG
+  usecase "Xem / cập nhật\\nngưỡng thiết bị" as UC\_Thresholds
+  usecase "Sinh / xoay ESP token" as UC\_RotateEspToken
+  usecase "Hủy command đang chờ" as UC\_CancelCmd
 }
 
-Viewer --> V_Login
-Viewer --> V_Restore
-Viewer --> V_Logout
-Viewer --> V_MyDevices
-Viewer --> V_SelectDevice
-Viewer --> V_LinkedUsers
-Viewer --> V_Latest
-Viewer --> V_History
-Viewer --> V_ECG
-Viewer --> V_Alerts
+Owner --> UC\_List
+Owner --> UC\_Claim
+Owner --> UC\_Select
+Owner --> UC\_Realtime
+Owner --> UC\_History
+Owner --> UC\_Alerts
+Owner --> UC\_Ack
+Owner --> UC\_ViewLinked
+Owner --> UC\_AddViewer
+Owner --> UC\_RemoveViewer
+Owner --> UC\_ECG
+Owner --> UC\_Thresholds
+Owner --> UC\_RotateEspToken
+Owner --> UC\_CancelCmd
 
-V_Login .> V_Me : <<include>>
-V_Login .> V_MyDevices : <<include>>
-V_Restore .> V_Refresh : <<include>>
-V_Restore .> V_Me : <<include>>
-V_Restore .> V_MyDevices : <<include>>
-V_SelectDevice .> V_BindScope : <<include>>
-
-V_LinkedUsers .> V_Access : <<include>>
-V_Latest .> V_Access : <<include>>
-V_History .> V_Access : <<include>>
-V_ECG .> V_Access : <<include>>
-V_Alerts .> V_Access : <<include>>
-
-note right of Viewer
-  Quyền viewer/caregiver trong source hiện tại là read-only:
-  - được xem dữ liệu, ECG, alerts và linked users
-  - không được request ECG
-  - không được quản lý viewer
-  - không được acknowledge alert
-end note
-
+UC\_Select .> UC\_Realtime : <<include>>
+UC\_Select .> UC\_History : <<include>>
+UC\_Select .> UC\_Alerts : <<include>>
+UC\_AddViewer .> UC\_ViewLinked : <<include>>
+UC\_RemoveViewer .> UC\_ViewLinked : <<include>>
 @enduml
 ```
-Đặc tả sơ đồ
-Mục tiêu: mô tả các use case dành cho người được chia sẻ quyền theo dõi thiết bị.
-Tác nhân: viewer/caregiver theo cách gọi của báo cáo; trong source hiện tại actor này tương ứng tốt nhất với quyền `viewer`.
-Đặc điểm quyền: tác nhân này chỉ thao tác read-only trên dữ liệu và linked users của thiết bị được chia sẻ.
-Quan hệ include chính:
-đăng nhập/khôi phục phiên luôn kéo theo đồng bộ user hiện tại và danh sách thiết bị được chia sẻ;
-mọi use case đọc dữ liệu đều phải qua `Kiểm tra quyền viewer theo device`;
-chọn thiết bị sẽ đồng bộ lại scope của realtime, history, ECG và alerts.
-Tiền điều kiện: viewer có tài khoản hợp lệ và đã được owner chia sẻ ít nhất một thiết bị.
-Hậu điều kiện: viewer truy cập được dữ liệu đúng thiết bị được chia sẻ nhưng không có quyền thao tác owner-only.
 ---
-4) Sơ đồ Use Case cho admin
+Hình UC-04. Use Case chi tiết phân hệ Người xem
 ```plantuml
 @startuml
 left to right direction
-skinparam shadowing false
 skinparam packageStyle rectangle
-skinparam actorStyle awesome
 
-actor "Admin" as Admin
+actor "Người xem\\n(Viewer)" as Viewer
 
-rectangle "Use Case - Admin" {
-
-  package "Xác thực và bootstrap" {
-    usecase "Đăng nhập admin" as A_Login
-    usecase "Tạo user bootstrap/manual" as A_CreateUser
-    usecase "Xem thông tin user" as A_ViewUser
-  }
-
-  package "Quản trị thiết bị" {
-    usecase "Đăng ký thiết bị mới" as A_RegisterDevice
-    usecase "Sinh pairing code\nmột lần" as A_PairingCode
-    usecase "Xem thông tin thiết bị" as A_ViewDevice
-    usecase "Cấp/rotate ESP token" as A_RotateToken
-    usecase "Lưu hash ESP token" as A_SaveTokenHash
-    usecase "Cấu hình ngưỡng cảnh báo" as A_Thresholds
-  }
-
-  package "Vận hành hệ thống" {
-    usecase "Xem /live /ready /health" as A_Health
-    usecase "Xem /metrics" as A_Metrics
-    usecase "Xem log/monitor script" as A_Logs
-    usecase "Theo dõi trạng thái vận hành" as A_Operations
-  }
-
-  package "Ràng buộc" {
-    usecase "Xác thực admin JWT" as A_AdminAuth
-  }
+rectangle "Phân hệ Người xem" {
+  usecase "Xem danh sách thiết bị\\nđược chia sẻ" as UC\_List
+  usecase "Chọn thiết bị hiện tại" as UC\_Select
+  usecase "Xem realtime" as UC\_Realtime
+  usecase "Xem lịch sử" as UC\_History
+  usecase "Xem cảnh báo" as UC\_Alerts
+  usecase "Xem linked users" as UC\_LinkedUsers
+  usecase "Xem thông tin thiết bị" as UC\_DeviceInfo
 }
 
-Admin --> A_Login
-Admin --> A_CreateUser
-Admin --> A_ViewUser
-Admin --> A_RegisterDevice
-Admin --> A_ViewDevice
-Admin --> A_RotateToken
-Admin --> A_Thresholds
-Admin --> A_Operations
+Viewer --> UC\_List
+Viewer --> UC\_Select
+Viewer --> UC\_Realtime
+Viewer --> UC\_History
+Viewer --> UC\_Alerts
+Viewer --> UC\_LinkedUsers
+Viewer --> UC\_DeviceInfo
 
-A_Login .> A_AdminAuth : <<include>>
-A_CreateUser .> A_AdminAuth : <<include>>
-A_RegisterDevice .> A_AdminAuth : <<include>>
-A_RotateToken .> A_AdminAuth : <<include>>
-A_Thresholds .> A_AdminAuth : <<include>>
-A_ViewUser .> A_AdminAuth : <<include>>
-A_ViewDevice .> A_AdminAuth : <<include>>
-
-A_RegisterDevice .> A_PairingCode : <<include>>
-A_RotateToken .> A_SaveTokenHash : <<include>>
-A_Operations .> A_Health : <<include>>
-A_Operations .> A_Metrics : <<include>>
-A_Operations .> A_Logs : <<include>>
-
+UC\_Select .> UC\_Realtime : <<include>>
+UC\_Select .> UC\_History : <<include>>
+UC\_Select .> UC\_Alerts : <<include>>
 @enduml
 ```
-Đặc tả sơ đồ
-Mục tiêu: mô tả các use case dành cho admin ở mức bootstrap, quản trị thiết bị và vận hành hệ thống.
-Tác nhân: admin sử dụng JWT hệ thống hoặc luồng bootstrap được kiểm soát.
-Phạm vi chức năng:
-tạo user bootstrap/manual;
-đăng ký thiết bị mới;
-sinh pairing code một lần;
-cấp hoặc rotate ESP token;
-cấu hình ngưỡng cảnh báo;
-theo dõi health, metrics và log vận hành.
-Quan hệ include quan trọng:
-hầu hết use case admin đều phải qua `Xác thực admin JWT`;
-`Đăng ký thiết bị mới` bao gồm `Sinh pairing code một lần`;
-`Cấp/rotate ESP token` bao gồm `Lưu hash ESP token`;
-`Theo dõi trạng thái vận hành` bao gồm health, metrics và logs.
-Tiền điều kiện: admin đã có thông tin xác thực hợp lệ; backend và hạ tầng vận hành đang sẵn sàng.
-Hậu điều kiện: user/device/token được tạo hoặc cập nhật đúng; hệ thống có thể được giám sát thông qua health, metrics và logs.
 ---
-5) Sơ đồ Use Case cho thiết bị ESP32
+Hình UC-05. Use Case chi tiết phân hệ Quản trị viên
 ```plantuml
 @startuml
 left to right direction
-skinparam shadowing false
 skinparam packageStyle rectangle
-skinparam actorStyle awesome
 
-actor "Thiết bị ESP32" as ESP
+actor "Quản trị viên\\n(Admin)" as Admin
 
-rectangle "Use Case - Thiết bị ESP32" {
-
-  package "Giao tiếp backend" {
-    usecase "Kết nối backend qua REST" as E_Connect
-    usecase "Gửi readings JSON" as E_SendReadings
-    usecase "Poll command kế tiếp" as E_PollCommand
-    usecase "Gửi ACK command" as E_AckCommand
-  }
-
-  package "Thi hành tác vụ" {
-    usecase "Thực thi command ECG" as E_RunECG
-  }
-
-  package "Xử lý phía hệ thống" {
-    usecase "Đính kèm X-Device-Token" as E_AttachToken
-    usecase "Xác thực thiết bị" as E_DeviceAuth
-    usecase "Lưu health_readings" as E_StoreReadings
-    usecase "Tạo alert nếu vượt ngưỡng" as E_CreateAlert
-    usecase "Cập nhật trạng thái command" as E_UpdateCommand
-  }
+rectangle "Phân hệ Quản trị viên" {
+  usecase "Đăng ký thiết bị mới" as UC\_RegisterDevice
+  usecase "Cấp lại pairing code" as UC\_ReissuePairing
+  usecase "Sinh trước device\_id,\\ndevice\_name, device\_type,\\nfirmware\_version" as UC\_DeviceMeta
+  usecase "Xem danh sách thiết bị\\nqua app" as UC\_ListDevices
+  usecase "Bootstrap tạo user\\nqua API /users" as UC\_BootstrapUser
 }
 
-ESP --> E_Connect
-ESP --> E_SendReadings
-ESP --> E_PollCommand
-ESP --> E_AckCommand
-ESP --> E_RunECG
+Admin --> UC\_RegisterDevice
+Admin --> UC\_ReissuePairing
+Admin --> UC\_ListDevices
+Admin --> UC\_BootstrapUser
 
-E_SendReadings .> E_AttachToken : <<include>>
-E_SendReadings .> E_DeviceAuth : <<include>>
-E_SendReadings .> E_StoreReadings : <<include>>
-E_SendReadings .> E_CreateAlert : <<include>>
-
-E_PollCommand .> E_AttachToken : <<include>>
-E_PollCommand .> E_DeviceAuth : <<include>>
-E_RunECG ..> E_PollCommand : <<extend>>
-
-E_AckCommand .> E_AttachToken : <<include>>
-E_AckCommand .> E_DeviceAuth : <<include>>
-E_AckCommand .> E_UpdateCommand : <<include>>
-
+UC\_RegisterDevice .> UC\_DeviceMeta : <<include>>
+UC\_ReissuePairing .> UC\_DeviceMeta : <<include>>
 @enduml
 ```
-Đặc tả sơ đồ
-Mục tiêu: mô tả vai trò của ESP32 như một actor IoT giao tiếp trực tiếp với backend.
-Tác nhân: firmware ESP32 đã được cấp `device_id` và `X-Device-Token` hợp lệ.
-Các use case cốt lõi:
-gửi readings sức khỏe;
-poll command kế tiếp;
-thực thi command ECG khi có lệnh;
-gửi ACK để backend cập nhật vòng đời command.
-Quan hệ include/extend quan trọng:
-mọi request từ ESP đều phải đính kèm token và đi qua xác thực thiết bị;
-`Gửi readings JSON` luôn bao gồm lưu readings và có thể phát sinh alert;
-`Thực thi command ECG` là use case mở rộng khi sau `Poll command kế tiếp` backend trả về lệnh ECG.
-Tiền điều kiện: thiết bị có kết nối mạng và có token hợp lệ.
-Hậu điều kiện: readings được lưu; alert có thể được sinh; trạng thái command được cập nhật sau ACK.
 ---
-6) Sơ đồ Use Case cho nhóm quản lý thiết bị và ECG on-demand
+Hình UC-06. Use Case chi tiết phân hệ Thiết bị ESP32
 ```plantuml
 @startuml
 left to right direction
-skinparam shadowing false
 skinparam packageStyle rectangle
-skinparam actorStyle awesome
 
-actor "Người dùng cuối\n(Owner)" as Owner
-actor "Người theo dõi\n(Viewer/Caregiver)" as Viewer
-actor "Admin" as Admin
-actor "Thiết bị ESP32" as ESP
+actor "Thiết bị ESP32 /\\nWearable" as ESP
 
-rectangle "Use Case - Quản lý thiết bị và ECG on-demand" {
+rectangle "Phân hệ Device Ingestion \& Command" {
+  usecase "Gửi readings sức khỏe\\n(POST /devices/{id}/readings)" as UC\_Ingest
+  usecase "Nhận command tiếp theo\\n(GET /devices/{id}/commands/next)" as UC\_Next
+  usecase "ACK command\\n(POST /commands/{id}/ack)" as UC\_Ack
+  usecase "Áp dụng lệnh ECG\\ntrên firmware" as UC\_Apply
+}
 
-  package "Quản lý thiết bị" {
-    usecase "Đăng ký thiết bị mới" as D_RegisterDevice
-    usecase "Sinh pairing code\nmột lần" as D_PairingCode
-    usecase "Claim thiết bị" as D_ClaimDevice
-    usecase "Tạo owner link" as D_CreateOwnerLink
-    usecase "Xem thiết bị đã liên kết" as D_MyDevices
-    usecase "Chọn thiết bị hiện tại" as D_SelectDevice
-    usecase "Xem linked users" as D_LinkedUsers
-    usecase "Thêm viewer" as D_AddViewer
-    usecase "Xóa viewer" as D_RemoveViewer
-    usecase "Cập nhật thresholds" as D_Thresholds
-    usecase "Cấp/rotate ESP token" as D_RotateToken
-  }
+ESP --> UC\_Ingest
+ESP --> UC\_Next
+ESP --> UC\_Ack
+ESP --> UC\_Apply
 
-  package "ECG on-demand" {
-    usecase "Gửi yêu cầu ECG" as D_RequestECG
-    usecase "Tạo command trong\ndevice_commands" as D_CreateCommand
-    usecase "Hủy command ECG" as D_CancelCommand
-    usecase "Poll command kế tiếp" as D_PollCommand
-    usecase "Thực thi command ECG" as D_RunECG
-    usecase "Gửi ACK command" as D_AckCommand
-    usecase "Cập nhật trạng thái command" as D_UpdateCommand
-    usecase "Truy vấn kết quả ECG" as D_ViewECG
-  }
+UC\_Next .> UC\_Apply : <<include>>
+UC\_Apply .> UC\_Ack : <<include>>
+@enduml
+```
+---
+Hình SQ-01. Sequence tổng quan App ↔ API ↔ DB
+```plantuml
+@startuml
+actor "Người dùng" as User
+participant "Flutter App" as App
+participant "SessionProvider /\\nDeviceProvider /\\nRealtimeProvider /\\nHistoryProvider /\\nAlertsProvider" as Providers
+participant "FastAPI Backend" as API
+database "MongoDB" as DB
+collections "Redis\\n(rate limit)" as Redis
+participant "ESP32 Device" as ESP
 
-  package "Ràng buộc nghiệp vụ" {
-    usecase "Kiểm tra quyền owner/admin" as D_OwnerOrAdmin
-    usecase "Kiểm tra quyền truy cập\ntheo device" as D_Access
-    usecase "Xác thực thiết bị" as D_DeviceAuth
+User -> App: Mở app / thao tác chức năng
+App -> Providers: Điều phối state
+Providers -> API: Gọi REST API
+API -> Redis: Kiểm tra rate limit
+API -> DB: Đọc/Ghi users, devices,\\ndevice\_links, health\_readings,\\nalerts, device\_commands, auth\_sessions
+DB --> API: Kết quả
+API --> Providers: JSON response
+Providers --> App: Cập nhật UI
+
+ESP -> API: Gửi readings / poll command / ACK command
+API -> DB: Lưu readings,\\ntạo alerts, cấp command
+DB --> API: Kết quả
+API --> ESP: Response
+@enduml
+```
+---
+Hình SQ-02. Sequence đăng ký / đăng nhập / khôi phục phiên
+```plantuml
+@startuml
+actor "Người dùng" as User
+participant "RegisterPage /\\nDevicePage" as App
+participant "SessionProvider" as Session
+participant "Auth API" as Auth
+database "MongoDB:\\nusers + auth\_sessions" as DB
+
+== Đăng ký ==
+User -> App: Nhập họ tên, SĐT, ngày sinh, mật khẩu
+App -> Session: register(...)
+Session -> Auth: POST /api/v1/auth/register
+Auth -> DB: kiểm tra phone tồn tại?
+alt Chưa tồn tại
+  Auth -> DB: tạo user, hash password,\\nghi audit log
+  DB --> Auth: success
+  Auth --> Session: user\_id
+  Session --> App: thành công
+  App --> User: Quay lại màn hình đăng nhập
+else Đã tồn tại / lỗi validate
+  Auth --> Session: 409 / 422
+  Session --> App: thông báo lỗi
+end
+
+== Đăng nhập ==
+User -> App: Nhập phone + password
+App -> Session: login(...)
+Session -> Auth: POST /api/v1/auth/login
+Auth -> DB: tìm user theo phone
+Auth -> DB: verify password
+alt Hợp lệ
+  Auth -> DB: issue access + refresh,\\nlưu auth\_session
+  Auth --> Session: tokens
+  Session -> Auth: GET /api/v1/auth/me
+  Auth -> DB: lấy hồ sơ hiện tại
+  Auth --> Session: currentUser
+  Session --> App: authenticated
+else Sai thông tin / inactive
+  Auth --> Session: 401
+  Session --> App: hiển thị lỗi
+end
+
+== Khôi phục phiên ==
+User -> App: Mở lại ứng dụng
+App -> Session: restore()
+alt Có refresh/access token
+  Session -> Auth: GET /api/v1/auth/me
+  alt access token còn hạn
+    Auth -> DB: lấy current user
+    Auth --> Session: user profile
+  else token hết hạn
+    Session -> Auth: POST /api/v1/auth/refresh
+    Auth -> DB: rotate refresh session
+    Auth --> Session: token pair mới
+    Session -> Auth: GET /api/v1/auth/me
+    Auth --> Session: user profile
+  end
+  Session --> App: vào hệ thống
+else Không có token
+  Session --> App: giữ trạng thái chưa đăng nhập
+end
+@enduml
+```
+---
+Hình SQ-03. Sequence liên kết thiết bị bằng pairing code
+```plantuml
+@startuml
+actor "Người dùng" as User
+participant "ClaimDevicePage" as App
+participant "DeviceProvider" as DeviceState
+participant "Devices API" as API
+database "MongoDB:\\ndevices + device\_links" as DB
+participant "Realtime/History/\\nAlerts/Ecg Providers" as OtherState
+
+User -> App: Nhập device\_id + pairing\_code
+App -> API: POST /api/v1/devices/{device\_id}/claim
+API -> DB: kiểm tra device tồn tại?
+API -> DB: kiểm tra pairing\_code\_hash
+alt Hợp lệ và chưa claim
+  API -> DB: tạo owner link
+  API -> DB: xóa pairing\_code\_hash
+  API --> App: success
+  App -> DeviceState: syncFromServer()
+  DeviceState -> API: GET /api/v1/me/devices
+  API -> DB: lấy danh sách device links của user
+  API --> DeviceState: items
+  App -> DeviceState: setCurrent(device\_id)
+  DeviceState --> App: current device
+  App -> OtherState: bind device hiện tại
+  OtherState -> API: GET latest/history/alerts/ecg
+  API -> DB: truy vấn dữ liệu thiết bị
+  API --> OtherState: dữ liệu ban đầu
+  App --> User: Liên kết thành công
+else Sai mã / không tồn tại / đã claim
+  API --> App: 404 / 409 / 422
+  App --> User: Hiển thị thông báo lỗi
+end
+@enduml
+```
+---
+Hình SQ-04. Sequence tải dashboard thiết bị (latest/history/alerts)
+```plantuml
+@startuml
+actor "Owner / Viewer" as User
+participant "DevicePage" as DevicePage
+participant "HomePage" as Home
+participant "DeviceProvider" as DeviceState
+participant "RealtimeProvider" as Realtime
+participant "HistoryProvider" as History
+participant "AlertsProvider" as Alerts
+participant "Devices API" as API
+database "MongoDB:\\nhealth\_readings + alerts + device\_links" as DB
+
+User -> DevicePage: Chọn một thiết bị
+DevicePage -> DeviceState: setCurrent(device\_id)
+DeviceState --> DevicePage: current updated
+DevicePage -> Home: mở HomePage
+
+Home -> Realtime: changeDevice(device\_id)
+Realtime -> API: GET /api/v1/devices/{id}/latest
+API -> DB: lấy latest reading theo quyền truy cập
+DB --> API: latest
+API --> Realtime: latest vitals
+
+Home -> History: bindScope(device\_id, day)
+History -> API: GET /api/v1/devices/{id}/history
+API -> DB: lấy readings theo ngày
+DB --> API: points
+API --> History: history data
+
+Home -> Alerts: bindDevice(device\_id)
+Alerts -> API: GET /api/v1/devices/{id}/alerts\\nhoặc GET /api/v1/me/alerts
+API -> DB: lấy alerts theo quyền truy cập
+DB --> API: alerts
+API --> Alerts: alert list
+
+Realtime --> Home: render panel realtime
+History --> Home: render chart/series
+Alerts --> Home: render tổng số cảnh báo
+Home --> User: Hiển thị dashboard thiết bị
+@enduml
+```
+---
+Hình SQ-05. Sequence quản lý người xem
+```plantuml
+@startuml
+actor "Chủ thiết bị" as Owner
+participant "DeviceViewersPage" as App
+participant "Devices API" as API
+database "MongoDB:\\ndevice\_links + users" as DB
+
+== Tải danh sách viewer ==
+Owner -> App: Mở màn hình quản lý người xem
+App -> API: GET /api/v1/devices/{device\_id}/viewers
+API -> DB: kiểm tra quyền owner
+API -> DB: lấy linked users của thiết bị
+DB --> API: viewers
+API --> App: danh sách viewers
+App --> Owner: hiển thị danh sách
+
+== Thêm viewer ==
+Owner -> App: Nhập account code của viewer
+App -> API: POST /api/v1/devices/{device\_id}/viewers
+API -> DB: kiểm tra owner access
+API -> DB: kiểm tra user\_id tồn tại?
+API -> DB: kiểm tra chưa liên kết trước đó?
+alt Hợp lệ
+  API -> DB: tạo device\_link role=viewer
+  API --> App: success
+  App -> API: GET /viewers
+  API --> App: danh sách mới
+  App --> Owner: thêm thành công
+else Sai user / trùng / không đủ quyền
+  API --> App: 403 / 404 / 409 / 422
+  App --> Owner: thông báo lỗi
+end
+
+== Xóa viewer ==
+Owner -> App: Chọn xóa viewer
+App -> API: DELETE /api/v1/devices/{device\_id}/viewers/{user\_id}
+API -> DB: kiểm tra owner access
+API -> DB: xóa device\_link viewer
+API --> App: success
+App -> API: GET /viewers
+API --> App: danh sách mới
+App --> Owner: xóa thành công
+@enduml
+```
+---
+Hình SQ-06. Sequence yêu cầu ECG theo lệnh từ app
+```plantuml
+@startuml
+actor "Chủ thiết bị" as Owner
+participant "HomePage" as App
+participant "Devices API" as API
+database "MongoDB:\\ndevice\_commands + device\_links" as DB
+participant "ESP32" as ESP
+
+Owner -> App: Bấm "Yêu cầu đo ECG"
+App -> API: POST /api/v1/devices/{device\_id}/ecg/request
+API -> DB: kiểm tra owner access
+API -> DB: tạo command type=ecg\_request,\\nstatus=pending
+API --> App: request accepted
+App --> Owner: Thông báo đã gửi lệnh
+
+... thiết bị polling backend ...
+ESP -> API: GET /api/v1/devices/{device\_id}/commands/next
+API -> DB: lấy command đang chờ gần nhất
+DB --> API: command ECG
+API --> ESP: command payload
+
+ESP -> ESP: Thực hiện đo ECG / thu mẫu
+ESP -> API: POST /api/v1/devices/{device\_id}/commands/{command\_id}/ack
+API -> DB: cập nhật command status=ack/completed
+API --> ESP: success
+
+ESP -> API: POST /api/v1/devices/{device\_id}/readings
+API -> DB: lưu ECG / readings mới
+API --> ESP: ok
+
+App -> API: GET /api/v1/devices/{device\_id}/ecg
+API -> DB: đọc ECG mới nhất
+API --> App: ecg payload
+App --> Owner: Hiển thị ECG
+@enduml
+```
+---
+Hình SQ-07. Sequence xác nhận xử lý cảnh báo
+```plantuml
+@startuml
+actor "Chủ thiết bị" as Owner
+participant "AlertsPage" as App
+participant "Alerts API" as API
+database "MongoDB:\\nalerts + device\_links" as DB
+
+Owner -> App: Mở trang cảnh báo
+App -> API: GET /api/v1/devices/{device\_id}/alerts
+API -> DB: lấy alerts theo thiết bị
+API --> App: danh sách cảnh báo
+
+Owner -> App: Chọn "Đã xử lý"
+App -> API: POST /api/v1/alerts/{alert\_id}/acknowledge
+API -> DB: require owner access từ alert -> device
+alt Có quyền owner
+  API -> DB: acknowledge\_alert(alert\_id,\\nacknowledged\_by, notes)
+  API --> App: success
+  App -> API: GET /alerts
+  API --> App: danh sách đã cập nhật
+  App --> Owner: trạng thái "đã xử lý"
+else Không có quyền / viewer
+  API --> App: 403
+  App --> Owner: báo không đủ quyền
+end
+@enduml
+```
+---
+Hình SQ-08. Sequence admin đăng ký thiết bị / cấp lại pairing code
+```plantuml
+@startuml
+actor "Quản trị viên" as Admin
+participant "AdminDeviceRegistrationPage" as App
+participant "Devices API" as API
+database "MongoDB:\\ndevices" as DB
+
+Admin -> App: Nhập device\_id, device\_name,\\ndevice\_type, firmware\_version,\\n(optional) pairing\_code
+App -> API: POST /api/v1/devices/register
+API -> DB: kiểm tra quyền admin / bootstrap principal
+API -> DB: nếu chưa có thì tạo device,\\nnếu đã có thì cấp lại pairing code
+API -> DB: lưu pairing\_code\_hash
+API --> App: device\_id + pairing\_code(clear text)
+App --> Admin: Hiển thị 2 mã để giao cho chủ thiết bị
+@enduml
+```
+---
+Hình SQ-09. Sequence ESP gửi readings và backend sinh cảnh báo
+```plantuml
+@startuml
+actor "ESP32" as ESP
+participant "ESP API" as API
+participant "Health Service" as Service
+database "MongoDB:\\nhealth\_readings + alerts + devices" as DB
+
+ESP -> API: POST /api/v1/devices/{device\_id}/readings\\n(X-Device-Token + payload)
+API -> API: require\_device\_token
+API -> Service: process\_health\_reading(payload)
+Service -> DB: lưu health\_readings
+Service -> DB: đọc threshold của thiết bị
+alt Vượt ngưỡng
+  Service -> DB: tạo alert severity tương ứng
+  Service --> API: reading stored + alert generated
+else Bình thường
+  Service --> API: reading stored
+end
+API --> ESP: success
+@enduml
+```
+---
+Hình AC-01. Activity tổng quan nghiệp vụ
+```plantuml
+@startuml
+start
+:Người dùng mở ứng dụng;
+if (Đã có phiên đăng nhập?) then (Có)
+  :Khôi phục phiên;
+  :Tải danh sách thiết bị;
+else (Không)
+  :Đăng ký hoặc đăng nhập;
+endif
+
+if (Đã có thiết bị liên kết?) then (Có)
+  :Chọn thiết bị hiện tại;
+  fork
+    :Tải latest vitals;
+  fork again
+    :Tải history theo ngày;
+  fork again
+    :Tải alerts;
+  end fork
+else (Không)
+  :Nhập device\_id + pairing\_code để claim;
+endif
+
+if (Vai trò trên thiết bị là owner?) then (Có)
+  :Có thể quản lý viewer;
+  :Có thể ACK cảnh báo;
+  :Có thể yêu cầu ECG;
+else (Không)
+  :Chỉ xem dữ liệu và cảnh báo;
+endif
+stop
+@enduml
+```
+---
+Hình AC-02. Activity đăng ký / đăng nhập
+```plantuml
+@startuml
+start
+:Người dùng vào màn hình xác thực;
+if (Chọn đăng ký?) then (Có)
+  :Nhập name, phone,\\ndate\_of\_birth, password;
+  if (Dữ liệu hợp lệ?) then (Có)
+    :Gọi POST /auth/register;
+    if (Phone chưa tồn tại?) then (Có)
+      :Tạo user mới;
+      :Thông báo đăng ký thành công;
+      :Quay lại đăng nhập;
+    else (Không)
+      :Thông báo số điện thoại đã tồn tại;
+    endif
+  else (Không)
+    :Hiển thị lỗi validate;
+  endif
+else (Không)
+  :Nhập phone + password;
+  :Gọi POST /auth/login;
+  if (Thông tin đúng?) then (Có)
+    :Lưu access + refresh token;
+    :Gọi GET /auth/me;
+    :Vào màn hình danh sách thiết bị;
+  else (Không)
+    :Hiển thị lỗi đăng nhập;
+  endif
+endif
+stop
+@enduml
+```
+---
+Hình AC-03. Activity liên kết thiết bị
+```plantuml
+@startuml
+start
+:Người dùng mở màn hình liên kết thiết bị;
+:Nhập device\_id và pairing\_code;
+if (Đủ dữ liệu?) then (Có)
+  :POST /devices/{device\_id}/claim;
+  if (Thiết bị tồn tại?) then (Có)
+    if (Pairing code đúng và chưa bị dùng?) then (Có)
+      :Tạo owner link;
+      :Xóa pairing\_code\_hash;
+      :Đồng bộ danh sách thiết bị;
+      :Set current device;
+      :Bind realtime/history/alerts/ecg;
+      :Thông báo liên kết thành công;
+    else (Không)
+      :Thông báo sai pairing code\\nhoặc thiết bị đã được claim;
+    endif
+  else (Không)
+    :Thông báo không tìm thấy thiết bị;
+  endif
+else (Không)
+  :Yêu cầu nhập đủ mã thiết bị và mã ghép nối;
+endif
+stop
+@enduml
+```
+---
+Hình AC-04. Activity quản lý người xem
+```plantuml
+@startuml
+start
+:Chủ thiết bị mở trang quản lý người xem;
+if (Có quyền owner?) then (Có)
+  :Tải danh sách linked users;
+  if (Muốn thêm viewer?) then (Có)
+    :Nhập account code;
+    :POST /devices/{device\_id}/viewers;
+    if (Account hợp lệ và chưa liên kết?) then (Có)
+      :Tạo device\_link role=viewer;
+      :Tải lại danh sách;
+    else (Không)
+      :Hiển thị lỗi trùng / sai mã / không tồn tại;
+    endif
+  else (Không)
+    :Chọn viewer cần xóa;
+    :DELETE /devices/{device\_id}/viewers/{user\_id};
+    :Tải lại danh sách;
+  endif
+else (Không)
+  :Từ chối truy cập trang quản lý viewer;
+endif
+stop
+@enduml
+```
+---
+Hình AC-05. Activity yêu cầu ECG
+```plantuml
+@startuml
+start
+:Chủ thiết bị bấm "Yêu cầu ECG";
+if (Có quyền owner?) then (Có)
+  :POST /devices/{device\_id}/ecg/request;
+  :Tạo command pending trong device\_commands;
+  :ESP polling /commands/next;
+  if (ESP nhận được lệnh?) then (Có)
+    :ESP đo ECG;
+    :ESP ACK command;
+    :ESP gửi readings/ECG mới;
+    :App tải dữ liệu ECG mới nhất;
+    :Hiển thị kết quả ECG;
+  else (Không)
+    :Lệnh chờ timeout / retry / recovery;
+  endif
+else (Không)
+  :Hiển thị "chỉ chủ thiết bị mới có thể yêu cầu ECG";
+endif
+stop
+@enduml
+```
+---
+Hình AC-06. Activity xử lý cảnh báo
+```plantuml
+@startuml
+start
+:ESP gửi readings;
+:Backend validate payload;
+:Backend lưu health\_readings;
+if (Vượt ngưỡng?) then (Có)
+  :Tạo alert mới;
+else (Không)
+  :Không tạo alert;
+endif
+
+:Người dùng mở trang cảnh báo;
+if (Vai trò owner?) then (Owner)
+  :Có nút xác nhận xử lý;
+  if (Người dùng bấm ACK?) then (Có)
+    :POST /alerts/{alert\_id}/acknowledge;
+    :Cập nhật acknowledged=true;
+  else (Không)
+    :Giữ nguyên trạng thái;
+  endif
+else (Viewer)
+  :Chỉ xem cảnh báo;
+endif
+stop
+@enduml
+```
+---
+Hình CM-01. Component diagram tổng quan App-Server
+```plantuml
+@startuml
+skinparam componentStyle rectangle
+
+package "Flutter Client" {
+  \[RegisterPage]
+  \[DevicePage]
+  \[HomePage]
+  \[AlertsPage]
+  \[AccountPage]
+  \[AdminDeviceRegistrationPage]
+
+  \[SessionProvider]
+  \[DeviceProvider]
+  \[RealtimeProvider]
+  \[HistoryProvider]
+  \[AlertsProvider]
+  \[EcgProvider]
+
+  \[AuthApiService]
+  \[DeviceApiService]
+  \[AlertApiService]
+}
+
+package "FastAPI Backend" {
+  \[Auth Router]
+  \[Users Router]
+  \[Devices Router]
+  \[Alerts Router]
+  \[ESP Router]
+  \[Rate Limit Middleware]
+  \[Command Recovery Loop]
+  \[Health Service]
+  \[Auth Utils]
+  \[Access Utils]
+}
+
+database "MongoDB" {
+  \[users]
+  \[auth\_sessions]
+  \[devices]
+  \[device\_links]
+  \[health\_readings]
+  \[alerts]
+  \[device\_commands]
+  \[audit\_logs]
+}
+
+queue "Redis" as Redis
+component "ESP32 / Wearable" as ESP
+
+\[RegisterPage] --> \[SessionProvider]
+\[DevicePage] --> \[SessionProvider]
+\[DevicePage] --> \[DeviceProvider]
+\[HomePage] --> \[RealtimeProvider]
+\[HomePage] --> \[HistoryProvider]
+\[HomePage] --> \[AlertsProvider]
+\[HomePage] --> \[EcgProvider]
+\[AlertsPage] --> \[AlertsProvider]
+\[AccountPage] --> \[SessionProvider]
+\[AdminDeviceRegistrationPage] --> \[DeviceProvider]
+
+\[SessionProvider] --> \[AuthApiService]
+\[DeviceProvider] --> \[DeviceApiService]
+\[RealtimeProvider] --> \[DeviceApiService]
+\[HistoryProvider] --> \[DeviceApiService]
+\[AlertsProvider] --> \[AlertApiService]
+\[EcgProvider] --> \[DeviceApiService]
+
+\[AuthApiService] --> \[Rate Limit Middleware]
+\[DeviceApiService] --> \[Rate Limit Middleware]
+\[AlertApiService] --> \[Rate Limit Middleware]
+
+\[Rate Limit Middleware] --> \[Auth Router]
+\[Rate Limit Middleware] --> \[Users Router]
+\[Rate Limit Middleware] --> \[Devices Router]
+\[Rate Limit Middleware] --> \[Alerts Router]
+\[Rate Limit Middleware] --> \[ESP Router]
+
+\[Auth Router] --> \[Auth Utils]
+\[Devices Router] --> \[Access Utils]
+\[Devices Router] --> \[Health Service]
+\[Alerts Router] --> \[Access Utils]
+\[ESP Router] --> \[Health Service]
+
+\[Auth Router] --> \[users]
+\[Auth Router] --> \[auth\_sessions]
+\[Users Router] --> \[users]
+\[Users Router] --> \[device\_links]
+\[Devices Router] --> \[devices]
+\[Devices Router] --> \[device\_links]
+\[Devices Router] --> \[device\_commands]
+\[Devices Router] --> \[health\_readings]
+\[Alerts Router] --> \[alerts]
+\[ESP Router] --> \[health\_readings]
+\[ESP Router] --> \[device\_commands]
+\[Health Service] --> \[alerts]
+\[Health Service] --> \[devices]
+
+\[Rate Limit Middleware] --> Redis
+ESP --> \[ESP Router]
+@enduml
+```
+---
+Hình DP-01. Deployment diagram tổng quan Docker/Production
+```plantuml
+@startuml
+node "Người dùng" {
+  node "Điện thoại / Web Client" as Client {
+    artifact "eldercare\_app\\n(Flutter)" as FlutterApp
   }
 }
 
-Admin --> D_RegisterDevice
-Admin --> D_RotateToken
-Admin --> D_Thresholds
+node "Thiết bị đeo" as Edge {
+  artifact "ESP32 Firmware" as Firmware
+}
 
-Owner --> D_ClaimDevice
-Owner --> D_MyDevices
-Owner --> D_SelectDevice
-Owner --> D_LinkedUsers
-Owner --> D_AddViewer
-Owner --> D_RemoveViewer
-Owner --> D_Thresholds
-Owner --> D_RotateToken
-Owner --> D_RequestECG
-Owner --> D_CancelCommand
-Owner --> D_ViewECG
+node "Docker Host / VPS" as Host {
+  node "backend container\\nwearable-backend" as Backend {
+    artifact "FastAPI app" as ApiApp
+  }
 
-Viewer --> D_MyDevices
-Viewer --> D_SelectDevice
-Viewer --> D_LinkedUsers
-Viewer --> D_ViewECG
+  node "mongodb container" as MongoNode {
+    database "MongoDB" as Mongo
+  }
 
-ESP --> D_PollCommand
-ESP --> D_RunECG
-ESP --> D_AckCommand
+  node "redis container\\nwearable-redis" as RedisNode {
+    queue "Redis" as Redis
+  }
 
-D_RegisterDevice .> D_PairingCode : <<include>>
-D_ClaimDevice .> D_CreateOwnerLink : <<include>>
+  node "cloudflared container" as Tunnel {
+    artifact "Cloudflare Tunnel" as CfTunnel
+  }
 
-D_LinkedUsers .> D_Access : <<include>>
-D_ViewECG .> D_Access : <<include>>
+  node "nodered container\\n(optional tools profile)" as NodeRedNode {
+    artifact "Node-RED" as NodeRed
+  }
+}
 
-D_AddViewer .> D_OwnerOrAdmin : <<include>>
-D_RemoveViewer .> D_OwnerOrAdmin : <<include>>
-D_Thresholds .> D_OwnerOrAdmin : <<include>>
-D_RotateToken .> D_OwnerOrAdmin : <<include>>
-D_RequestECG .> D_OwnerOrAdmin : <<include>>
-D_CancelCommand .> D_OwnerOrAdmin : <<include>>
-
-D_RequestECG .> D_CreateCommand : <<include>>
-D_PollCommand .> D_DeviceAuth : <<include>>
-D_RunECG ..> D_PollCommand : <<extend>>
-D_AckCommand .> D_DeviceAuth : <<include>>
-D_AckCommand .> D_UpdateCommand : <<include>>
-D_CancelCommand .> D_UpdateCommand : <<include>>
-
+FlutterApp --> ApiApp : HTTPS REST
+Firmware --> ApiApp : HTTPS + X-Device-Token
+ApiApp --> Mongo : CRUD / query
+ApiApp --> Redis : rate limit
+CfTunnel --> ApiApp : public ingress
+NodeRed --> Mongo : tooling / flows
 @enduml
 ```
-Đặc tả sơ đồ
-Mục tiêu: mô tả luồng nghiệp vụ xuyên actor của hai mảng quan trọng nhất: quản lý thiết bị và ECG on-demand.
-Tác nhân tham gia:
-admin: đăng ký thiết bị, sinh pairing code, hỗ trợ token/threshold;
-owner: claim thiết bị, quản lý viewer, cấu hình threshold, request/cancel ECG;
-viewer: xem linked users và kết quả ECG theo quyền read-only;
-ESP32: poll command, chạy ECG, gửi ACK.
-Quan hệ include/extend quan trọng:
-`Đăng ký thiết bị mới` bao gồm `Sinh pairing code một lần`;
-`Claim thiết bị` bao gồm `Tạo owner link`;
-toàn bộ thao tác quản trị thiết bị và ECG của owner/admin đều qua `Kiểm tra quyền owner/admin`;
-`Gửi yêu cầu ECG` bao gồm `Tạo command trong device_commands`;
-`Thực thi command ECG` là hành vi mở rộng sau `Poll command kế tiếp`;
-`Gửi ACK command` và `Hủy command ECG` đều tác động `Cập nhật trạng thái command`.
-Tiền điều kiện: admin đã register device hoặc hệ thống đã có device; owner đã đăng nhập; ESP32 online và có token hợp lệ.
-Hậu điều kiện: thiết bị được claim/chia sẻ đúng; command ECG được tạo, phát, thực thi và cập nhật trạng thái; app có thể truy vấn kết quả ECG sau khi luồng hoàn tất.
+---
+4) Cấu trúc chương 3 đề xuất để chèn vào báo cáo
+3.2.3 Sơ đồ Use Case
+Hình UC-01: Sơ đồ Use Case tổng quan toàn hệ thống Eldercare
+Hình UC-02: Sơ đồ Use Case chi tiết phân hệ Tài khoản & Xác thực
+Hình UC-03: Sơ đồ Use Case chi tiết phân hệ Chủ thiết bị
+Hình UC-04: Sơ đồ Use Case chi tiết phân hệ Người xem
+Hình UC-05: Sơ đồ Use Case chi tiết phân hệ Quản trị viên
+Hình UC-06: Sơ đồ Use Case chi tiết phân hệ Thiết bị ESP32
+3.2.4 Sơ đồ Tuần tự (Sequence Diagram)
+Hình SQ-01: Sơ đồ Sequence tổng quan App ↔ API ↔ DB
+Hình SQ-02: Đăng ký / đăng nhập / khôi phục phiên
+Hình SQ-03: Liên kết thiết bị bằng mã ghép nối
+Hình SQ-04: Tải dashboard thiết bị
+Hình SQ-05: Quản lý người xem
+Hình SQ-06: Yêu cầu ECG
+Hình SQ-07: Xác nhận xử lý cảnh báo
+Hình SQ-08: Admin đăng ký thiết bị
+Hình SQ-09: ESP gửi readings và backend sinh cảnh báo
+3.2.5 Sơ đồ Hoạt động (Activity Diagram)
+Hình AC-01: Activity tổng quan nghiệp vụ
+Hình AC-02: Activity đăng ký / đăng nhập
+Hình AC-03: Activity liên kết thiết bị
+Hình AC-04: Activity quản lý người xem
+Hình AC-05: Activity yêu cầu ECG
+Hình AC-06: Activity xử lý cảnh báo
+3.2.6 Kiến trúc triển khai
+Hình CM-01: Component diagram tổng quan app-server
+Hình DP-01: Deployment diagram tổng quan Docker/Production
+---
+5) Ghi chú bám sát code để tránh vẽ sai
+Không nên vẽ actor “Bệnh nhân”, “Bác sĩ”, “Người chăm sóc” như quyền hệ thống độc lập nếu trong code chưa có role riêng. Hệ thống hiện tại kiểm soát quyền chính theo `owner` và `viewer` trên từng thiết bị.
+Admin không phải owner mặc định của mọi thiết bị; admin chủ yếu dùng để đăng ký thiết bị/cấp pairing code hoặc bootstrap user.
+Luồng ECG là command-based, không phải app gọi phát ECG trực tiếp trên thiết bị; app tạo command, ESP poll command, thực thi rồi ACK.
+Luồng cảnh báo sinh ra từ dữ liệu đo, không phải người dùng tự tạo cảnh báo.
+Viewer chỉ xem, không ACK cảnh báo và không quản lý viewers.
+Liên kết thiết bị owner dùng pairing code, còn thêm viewer dùng `account code/user\_id`.
+Kiến trúc backend là FastAPI + MongoDB + Redis, không phải SQL Server hay kiến trúc MVC truyền thống.
+---
+6) Gợi ý trình bày trong báo cáo
+Ở phần mô tả use case, nên chia theo quyền thực tế của hệ thống thay vì chia quá thiên về “đối tượng xã hội”.
+Ở phần sequence, ưu tiên những luồng “có giá trị kỹ thuật”:
+claim device
+quản lý viewer
+ECG command
+alert acknowledge
+ESP ingest reading
+Ở phần activity, nên dùng để mô tả quyết định phân quyền và các nhánh lỗi như `401/403/404/409/422`.
+Ở phần triển khai, nên có deployment diagram để thể hiện rõ giá trị của repo `docker-environment`.
+---
